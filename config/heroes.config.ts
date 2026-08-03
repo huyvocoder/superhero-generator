@@ -31,14 +31,14 @@ export const HEROES: HeroOption[] = [
     name: 'Spider-Man',
     thumbnail: '/heroes/spiderman.jpg',
     prompt:
-      'Transform this person into Spider-Man with the mask pulled up to fully show their real face, photorealistic style. Red and blue spider suit with web-pattern texture, with the black spider emblem clearly visible on the chest. Dynamic action pose — mid-air combat kick or web-slinging swing motion, body in dramatic motion. Only this single character alone in the frame, no other people present. Skyscrapers and city battle damage in the background, realistic lighting, ultra-detailed, cinematic photography style.',
+      'Transform this person into a photorealistic spider-themed superhero while preserving their exact facial features and identity.The character wears a sleek red and blue tactical suit with intricate web-inspired textures and an original spider-inspired chest symbol.The mask is pulled back to fully reveal the person real face.Dynamic web-swinging action pose above a modern city.Ultra detailed, cinematic lighting, realistic photography, DSLR quality.Create an original superhero design inspired by classic comic book heroes. Do not recreate copyrighted characters or logos.',
   },
   {
     id: 'ironman',
     name: 'Iron Man',
     thumbnail: '/heroes/ironman.jpg',
     prompt:
-      'Transform this person into Iron Man with the helmet retracted to fully show their real face, photorealistic style. Red and gold metallic armored suit with the circular arc reactor glowing clearly on the chest. Dynamic combat pose — repulsor blast firing from palms, body braced from impact or mid-flight attack stance. Only this single character alone in the frame, no other people present. Futuristic city street with battle damage in the background, realistic metal textures, cinematic photography style, shot on DSLR.',
+      'Transform this person into a photorealistic futuristic armored superhero while preserving their exact facial features.The character wears a luxurious red and gold powered exosuit with advanced metallic plating and a glowing circular energy core on the chest.The helmet is fully opened to reveal the person real face.Dynamic flying combat pose with glowing energy blasts fired from both hands.Ultra detailed, cinematic photography, realistic metal reflections, DSLR quality.Create a completely original armored superhero. Do not reproduce copyrighted characters, armor designs or logos.',
   },
 ];
 
