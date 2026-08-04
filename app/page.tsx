@@ -444,8 +444,8 @@ export default function Home() {
                 </div>
                 {mode === 'camera' ? (
                   <div className="w-full h-full flex flex-col">
-                    <video ref={videoRef} autoPlay playsInline className="flex-1 w-full object-cover" />
-                    <div className="flex gap-2 p-3 bg-[#0B0B0F]/90 backdrop-blur-md">
+                    <video ref={videoRef} autoPlay playsInline muted className="flex-1 min-h-0 w-full object-cover" />
+                    <div className="flex-shrink-0 flex gap-2 p-3 bg-[#0B0B0F]/90 backdrop-blur-md">
                       <button
                         onClick={capturePhoto}
                         className="flex-1 bg-[#E63946] hover:bg-[#c92e3a] py-2 rounded-lg font-body font-bold text-sm text-white shadow-lg transition"
