@@ -214,40 +214,47 @@ const resetImage = () => {
   // Input là base64 thuần trả về từ Gemini (không có prefix data:...)
   // ============================================================
   const overlayNameOnImage = (base64Image: string, userName: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return resolve(base64Image);
+  return new Promise((resolve) => {
+    const img = new Image();
 
-        // Vẽ ảnh gốc lên canvas
-        ctx.drawImage(img, 0, 0);
+    img.onload = async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
 
-        // Cấu hình chữ: cỡ chữ tỉ lệ theo chiều rộng ảnh để không bị quá to/nhỏ
-        const fontSize = Math.floor(img.width * 0.06);
-        ctx.font = `bold ${fontSize}px Arial`;
-        ctx.textAlign = 'center';
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve(base64Image);
 
-        const textX = img.width / 2;
-        const textY = img.height - fontSize * 1.2; // đặt tên gần đáy ảnh
+      // Đảm bảo font đã được load
+      await document.fonts.load('48px "GreatVibes"');
 
-        // Viền đen + chữ trắng để tên luôn rõ dù ảnh nền sáng/tối
-        ctx.lineWidth = fontSize * 0.08;
-        ctx.strokeStyle = 'black';
-        ctx.strokeText(userName.toUpperCase(), textX, textY);
+      // Vẽ ảnh
+      ctx.drawImage(img, 0, 0);
 
-        ctx.fillStyle = 'white';
-        ctx.fillText(userName.toUpperCase(), textX, textY);
+      const fontSize = Math.floor(img.width * 0.1);
 
-        resolve(canvas.toDataURL('image/png'));
-      };
-      // Ảnh từ Gemini là base64 thuần, tự thêm prefix để trình duyệt hiểu đúng định dạng
-      img.src = `data:image/png;base64,${base64Image}`;
-    });
-  };
+      ctx.font = `${fontSize}px "GreatVibes"`; // Không cần bold
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+
+      const textX = img.width / 2;
+      const textY = img.height - fontSize * 0.8;
+
+      // Viền
+      ctx.lineWidth = fontSize * 0.06;
+      ctx.strokeStyle = "rgba(0,0,0,0.7)";
+      ctx.strokeText(userName, textX, textY);
+
+      // Chữ
+      ctx.fillStyle = "#fff";
+      ctx.fillText(userName, textX, textY);
+
+      resolve(canvas.toDataURL("image/png"));
+    };
+
+    img.src = `data:image/png;base64,${base64Image}`;
+  });
+};
 
   // ============================================================
   // GHI LOG - Thành phần D
