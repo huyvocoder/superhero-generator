@@ -593,7 +593,7 @@ export default function Home() {
                 {loading ? (
                   <>
                     <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span className="font-body text-sm font-bold">Đang biến hình...</span>
+                    Đang biến hình
                   </>
                 ) : (
                   '⚡ Biến hình'
