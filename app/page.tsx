@@ -353,16 +353,33 @@ export default function Home() {
   // GIAO DIỆN
   // ============================================================
   return (
-    <main className="min-h-screen w-full overflow-x-hidden bg-[#0B0B0F] text-[#F5F0E6] selection:bg-[#FFC93C] selection:text-black">
-      {/* Font comic cho tiêu đề + halftone texture nền */}
+    <main className="relative min-h-screen w-full overflow-x-hidden bg-[#0B0B0F] text-[#F5F0E6] selection:bg-[#FFC93C] selection:text-black">
+
+      <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[450px]
+                  bg-red-600/15 blur-[180px]" />
+
+      <div className="pointer-events-none absolute top-80 right-0 w-[500px] h-[500px]
+                  bg-yellow-400/8 blur-[180px]" />
+      <div className="pointer-events-none absolute bottom-20 left-0 w-[450px] h-[450px]
+                  bg-[#E63946]/10 blur-[160px]" />
+
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
         .font-comic { font-family: 'Bangers', system-ui, sans-serif; letter-spacing: 0.02em; }
         .font-body { font-family: 'Space Grotesk', system-ui, sans-serif; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
         .halftone-bg {
-          background-image: radial-gradient(#ffffff14 1px, transparent 1px);
-          background-size: 14px 14px;
+          background-image:
+            radial-gradient(#ffffff18 1px, transparent 1px),
+            linear-gradient(
+              180deg,
+              rgba(230,57,70,.08),
+              transparent 30%,
+              transparent 70%,
+              rgba(255,201,60,.05)
+            );
+
+          background-size: 14px 14px, 100% 100%;
         }
         .comic-panel {
           border: 3px solid #1a1a1f;
