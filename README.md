@@ -23,13 +23,13 @@ npm install
 
 ### 3. Cấu hình biến môi trường
 
-Tạo file `.env.local` ở thư mục gốc (copy từ `.env.example`):
+Tạo file `.env` ở thư mục gốc (copy từ `.env.example`):
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
-Mở `.env.local` và điền API key của bạn:
+Mở `.env` và điền API key của bạn:
 
 ```
 GEMINI_API_KEY=your_api_key_here
