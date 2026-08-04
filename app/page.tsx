@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { toast } from 'sonner';
 import {
   HEROES,
   ASPECT_RATIOS,
@@ -24,6 +25,17 @@ interface LogEntry {
   errorMessage?: string;
 }
 
+// Kết quả validate ảnh (Thành phần A mở rộng - validate trước khi generate)
+interface ImageValidation {
+  isValid: boolean;
+  reason?: string;
+  hasFace?: boolean;
+  faceCount?: number;
+  isBlurry?: boolean;
+  isTooDark?: boolean;
+  isFaceClear?: boolean;
+}
+
 export default function Home() {
   // ----------------------------------------------------------
   // STATE - Thành phần A (input tên + ảnh)
@@ -33,6 +45,10 @@ export default function Home() {
   const [imageBase64, setImageBase64] = useState<string | null>(null); // ảnh base64 thuần, dùng để gửi API
   const [mode, setMode] = useState<'idle' | 'camera'>('idle'); // trạng thái camera đang bật hay không
   const [showUploadMenu, setShowUploadMenu] = useState(false); // hiện menu "Tải từ máy / Chụp ảnh" khi bấm ô upload
+
+  // STATE - validate ảnh đầu vào (có mặt người / có mờ / có tối không...)
+  const [imageValidation, setImageValidation] = useState<ImageValidation | null>(null);
+  const [validating, setValidating] = useState(false);
 
   // STATE - lựa chọn nhân vật + tỉ lệ ảnh
   const [selectedHero, setSelectedHero] = useState(DEFAULT_HERO_ID);
@@ -58,27 +74,30 @@ export default function Home() {
 
   // Upload ảnh từ thiết bị
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setImagePreview(result);
-      // Bỏ phần "data:image/jpeg;base64," để lấy base64 thuần cho API
-      setImageBase64(result.split(',')[1]);
-    };
-    reader.readAsDataURL(file);
-    setShowUploadMenu(false);
+  setImageValidation(null); // reset kết quả validate cũ trước khi xử lý ảnh mới
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = reader.result as string;
+    setImagePreview(result);
+    const base64 = result.split(',')[1];
+    setImageBase64(base64);
+    validateImage(base64);
   };
+  reader.readAsDataURL(file);
+  setShowUploadMenu(false);
+};
 
   // Bật camera trình duyệt
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-              facingMode: "user"
-          }
+        video: {
+          facingMode: 'user',
+        },
       });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
@@ -86,7 +105,7 @@ export default function Home() {
       setShowUploadMenu(false);
     } catch (err) {
       // Bắt lỗi khi user từ chối quyền camera hoặc thiết bị không hỗ trợ
-      alert('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập trình duyệt.');
+      toast.error('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập trình duyệt.');
       console.error(err);
     }
   };
@@ -102,7 +121,10 @@ export default function Home() {
 
     const dataUrl = canvas.toDataURL('image/jpeg');
     setImagePreview(dataUrl);
-    setImageBase64(dataUrl.split(',')[1]);
+    const base64 = dataUrl.split(',')[1];
+    setImageBase64(base64);
+    setImageValidation(null);
+    validateImage(base64);
 
     // Tắt camera sau khi chụp xong
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -116,19 +138,76 @@ export default function Home() {
   };
 
   useEffect(() => {
-      if (
-          mode === "camera" &&
-          videoRef.current &&
-          streamRef.current
-      ) {
-
-          videoRef.current.srcObject = streamRef.current;
-
-          videoRef.current.play();
-
-      }
-
+    if (mode === 'camera' && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play();
+    }
   }, [mode]);
+
+  // ============================================================
+  // VALIDATE ẢNH - kiểm tra có mặt người, ảnh có mờ/tối không
+  // trước khi cho phép Generate (gọi Gemini phân tích ảnh)
+  // ============================================================
+  const validateImage = async (base64: string) => {
+  setValidating(true);
+
+  const logId = addLog({ action: 'Validate ảnh đầu vào', status: 'pending' });
+  const startTime = Date.now();
+
+  try {
+    const res = await fetch('/api/validate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64 }),
+    });
+    const data = await res.json();
+    const latency = Date.now() - startTime;
+
+    if (!res.ok || !data.success) {
+      updateLog(logId, {
+        status: 'error',
+        httpStatus: data.httpStatus || res.status,
+        latency,
+        errorMessage: data.error,
+      });
+      // Lỗi hệ thống khi validate (network, Gemini lỗi...) -> reset ảnh, không giữ ảnh lỗi trên màn hình
+      resetImage();
+      toast.error(data.error || 'Không thể kiểm tra ảnh, vui lòng thử lại.');
+      return;
+    }
+
+    updateLog(logId, {
+      status: 'success',
+      httpStatus: data.httpStatus,
+      latency,
+      requestPayload: data.requestPayload,
+    });
+
+    if (!data.validation.isValid) {
+      // Ảnh không đạt yêu cầu (mờ, tối, sai số mặt...) -> reset về trạng thái chưa có ảnh
+      // để người dùng chọn/chụp ảnh khác ngay, thay vì phải tự bấm "Chọn lại ảnh khác"
+      resetImage();
+      toast.warning(data.validation.reason);
+      return;
+    }
+
+    setImageValidation(data.validation);
+  } catch (err: any) {
+    const latency = Date.now() - startTime;
+    updateLog(logId, { status: 'error', latency, errorMessage: err.message || 'Lỗi kết nối mạng' });
+    resetImage();
+    toast.error('Không thể kết nối để kiểm tra ảnh.');
+  } finally {
+    setValidating(false);
+  }
+};
+
+// Reset toàn bộ state liên quan đến ảnh, dùng khi ảnh không hợp lệ hoặc người dùng chọn ảnh khác
+const resetImage = () => {
+  setImagePreview(null);
+  setImageBase64(null);
+  setImageValidation(null);
+};
 
   // ============================================================
   // THÀNH PHẦN C - Overlay tên lên ảnh kết quả bằng Canvas
@@ -199,7 +278,24 @@ export default function Home() {
   // GỌI API GENERATE - Thành phần B
   // ============================================================
   const handleGenerate = async () => {
-    if (!name || !imageBase64) return;
+    // Không disable cứng nút nữa -> validate ở đây và toast rõ ràng đang thiếu gì,
+    // để người dùng biết chính xác cần làm gì thay vì đoán vì sao nút không bấm được
+    if (!name) {
+      toast.warning('Vui lòng nhập tên của bạn.');
+      return;
+    }
+    if (!imageBase64) {
+      toast.warning('Vui lòng tải ảnh hoặc chụp ảnh trước khi tiếp tục.');
+      return;
+    }
+    if (validating) {
+      toast.info('Đang kiểm tra ảnh, vui lòng đợi trong giây lát.');
+      return;
+    }
+    if (imageValidation?.isValid === false) {
+      toast.warning(imageValidation.reason || 'Ảnh chưa hợp lệ, vui lòng chọn ảnh khác.');
+      return;
+    }
 
     setLoading(true);
     setResultImage(null);
@@ -236,7 +332,7 @@ export default function Home() {
           errorMessage: data.error || 'Lỗi không xác định',
           requestPayload: data.requestPayload,
         });
-        alert(`Có lỗi xảy ra: ${data.error || 'Không rõ nguyên nhân'}`);
+        toast.error(data.error || 'Có lỗi xảy ra, vui lòng thử lại.');
         return;
       }
 
@@ -253,6 +349,7 @@ export default function Home() {
       // Thành phần C: overlay tên lên ảnh ngay sau khi có ảnh kết quả
       const overlaid = await overlayNameOnImage(data.resultImageBase64, name);
       setFinalImage(overlaid);
+      toast.success('Đã tạo ảnh siêu anh hùng thành công!');
     } catch (err: any) {
       // Lỗi network/timeout phía client (không kết nối được server)
       const latency = Date.now() - startTime;
@@ -261,7 +358,7 @@ export default function Home() {
         latency,
         errorMessage: err.message || 'Lỗi kết nối mạng',
       });
-      alert('Không thể kết nối tới server. Vui lòng thử lại.');
+      toast.error('Không thể kết nối tới server. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -311,18 +408,25 @@ export default function Home() {
               </div>
             </div>
           ) : imagePreview ? (
-            // Đã có ảnh: hiện preview + nút chọn lại
+            // Đã có ảnh: hiện preview + nút chọn lại + trạng thái validate
             <div className="space-y-3">
               <img
                 src={imagePreview}
                 alt="Preview"
                 className="w-full rounded-lg max-h-72 object-contain border border-gray-700"
               />
+
+              {/* Trạng thái validate ảnh - giữ hiển thị inline vì đây là trạng thái liên tục,
+                  không phải sự kiện tức thời như toast */}
+              {validating && (
+                <p className="text-sm text-yellow-400 flex items-center gap-2">
+                  <span className="w-3 h-3 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                  Đang kiểm tra ảnh...
+                </p>
+              )}
+
               <button
-                onClick={() => {
-                  setImagePreview(null);
-                  setImageBase64(null);
-                }}
+                onClick={resetImage}
                 className="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-medium"
               >
                 Chọn lại ảnh khác
@@ -380,11 +484,11 @@ export default function Home() {
                     : 'border-gray-700 bg-gray-800'
                 }`}
               >
-                  <img
-                    src={hero.thumbnail}
-                    alt={hero.name}
-                    className="w-full aspect-square rounded-lg object-cover"
-                  />
+                <img
+                  src={hero.thumbnail}
+                  alt={hero.name}
+                  className="w-full aspect-square rounded-lg object-cover"
+                />
                 <span className="text-xs text-gray-300">{hero.name}</span>
               </button>
             ))}
@@ -411,10 +515,13 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ---------- Nút Generate ---------- */}
+        {/* ---------- Nút Generate ----------
+            Không disable khi thiếu tên/ảnh nữa (chỉ disable khi đang loading/validating
+            hoặc ảnh CHẮC CHẮN không hợp lệ) - các trường hợp thiếu input sẽ được
+            handleGenerate chặn và báo rõ bằng toast khi bấm, thay vì im lặng disable nút */}
         <button
           onClick={handleGenerate}
-          disabled={!name || !imageBase64 || loading}
+          disabled={loading || validating || imageValidation?.isValid === false}
           className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed py-3 rounded-lg font-bold flex items-center justify-center gap-2"
         >
           {loading ? (
@@ -432,7 +539,13 @@ export default function Home() {
         {finalImage && (
           <div className="space-y-2">
             <label className="block text-sm text-gray-300">Kết quả</label>
-            <img src={finalImage} alt="Result" className="w-full rounded-lg border border-gray-700" />
+
+            <img
+              src={finalImage}
+              alt="Result"
+              className="w-full rounded-lg border border-gray-700"
+            />
+
             <a
               href={finalImage}
               download={`superhero-${name}.png`}
@@ -443,7 +556,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* ---------- Thành phần D: Log Panel ---------- */}
+        {/* ---------- Thành phần D: Log Panel (giữ nguyên, không đổi sang toast) ---------- */}
         <div className="border border-gray-700 rounded-lg">
           <button
             onClick={() => setShowLogPanel(!showLogPanel)}
