@@ -387,6 +387,11 @@ export default function Home() {
         }
         .comic-panel-blue { box-shadow: 6px 6px 0 #1D3E9C; }
         .comic-panel-yellow { box-shadow: 6px 6px 0 #FFC93C; }
+        @keyframes shine {
+  100% {
+    transform: translateX(200%);
+  }
+}
       `}</style>
 
       {/* Modal Xem Ảnh Demo / Kết quả Fullsize */}
@@ -422,6 +427,10 @@ export default function Home() {
             <h1 className="font-comic text-3xl sm:text-4xl md:text-5xl text-white tracking-wide drop-shadow-[0_4px_12px_rgba(230,57,70,0.5)]">
               Biến thân thành siêu anh hùng mà bạn muốn
             </h1>
+
+            <p className="mt-3 font-body text-xs sm:text-sm text-slate-400 tracking-wide font-sans">
+              Tải ảnh cá nhân &gt; Nhập tên &gt; Chọn danh tính &gt; Chọn tỉ lệ ảnh &gt; <span className="text-white font-semibold">⚡BIẾN HÌNH NGAY</span>
+            </p>
           </header>
 
           {/* ---------- KHU VỰC LÀM VIỆC CHÍNH ---------- */}
@@ -484,6 +493,9 @@ export default function Home() {
                     <span className="text-5xl group-hover:scale-110 transition duration-300 opacity-40">📷</span>
                     <span className="text-xs font-body text-[#F5F0E6]/60 group-hover:text-white transition">
                       Bấm để tải ảnh của bạn
+                    </span>
+                    <span className="font-body text-xs text-[#F5F0E6]/50 italic">
+                      (Chọn ảnh cá nhân, rõ mặt để đảm bảo chất lượng tốt nhất)
                     </span>
                   </button>
                 )}
@@ -588,16 +600,51 @@ export default function Home() {
               <button
                 onClick={handleGenerate}
                 disabled={!canGenerate || loading}
-                className="w-full bg-gradient-to-r from-[#E63946] to-[#C92E3A] hover:from-[#f84351] hover:to-[#df3340] disabled:from-[#2a2a33] disabled:to-[#2a2a33] disabled:cursor-not-allowed py-3.5 rounded-lg font-comic text-xl tracking-wider flex items-center justify-center gap-2 text-white shadow-[0_4px_20px_rgba(230,57,70,0.4)] disabled:shadow-none transition-all duration-300"
+                className="
+                  relative w-full overflow-hidden
+                  rounded-xl py-4
+                  font-comic text-2xl tracking-wider text-white
+                  bg-gradient-to-r from-[#E63946] via-[#F04E59] to-[#C92E3A]
+                  shadow-[0_8px_30px_rgba(230,57,70,0.45)]
+                  hover:scale-[1.02]
+                  hover:shadow-[0_10px_40px_rgba(230,57,70,0.65)]
+                  active:scale-[0.98]
+                  transition-all duration-300
+                  disabled:from-[#2a2a33]
+                  disabled:via-[#2a2a33]
+                  disabled:to-[#2a2a33]
+                  disabled:shadow-none
+                  disabled:cursor-not-allowed
+                "
               >
-                {loading ? (
-                  <>
-                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Đang biến hình
-                  </>
-                ) : (
-                  '⚡ Biến hình'
+                {/* ánh sáng chạy */}
+                {!loading && (
+                  <span
+                    className="
+                      absolute inset-0
+                      -translate-x-full
+                      bg-gradient-to-r
+                      from-transparent
+                      via-white/20
+                      to-transparent
+                      animate-[shine_2.5s_linear_infinite]
+                    "
+                  />
                 )}
+
+                <span className="relative flex items-center justify-center gap-3">
+                  {loading ? (
+                    <>
+                      <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Đang biến hình...
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-2xl -ml-1 relative z-20">⚡</span>
+                      <span className="-ml-3 relative z-10">Biến hình ngay</span>
+                    </>
+                  )}
+                </span>
               </button>
             </div>
 
