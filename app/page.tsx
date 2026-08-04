@@ -400,7 +400,7 @@ export default function Home() {
           {/* ---------- TIÊU ĐỀ LỚN ---------- */}
           <header className="text-center space-y-3">
             <p className="mb-4 font-mono text-sm font-bold tracking-[0.3em] text-[#FFC93C] uppercase drop-shadow-[0_0_10px_rgba(255,201,60,0.3)]">
-              ⚡ Studio biến hình · phiên bản beta
+              Hero Studio · phiên bản beta
             </p>
             <h1 className="font-comic text-3xl sm:text-4xl md:text-5xl text-white tracking-wide drop-shadow-[0_4px_12px_rgba(230,57,70,0.5)]">
               Biến thân thành siêu anh hùng mà bạn muốn
