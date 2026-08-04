@@ -113,7 +113,13 @@ export default function Home() {
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
     const ctx = canvas.getContext('2d');
-    ctx?.drawImage(videoRef.current, 0, 0);
+
+    // Lật ngang khi vẽ để ảnh chụp khớp với preview đã mirror (giống camera trước điện thoại thật)
+    if (ctx) {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(videoRef.current, 0, 0);
+    }
 
     const dataUrl = canvas.toDataURL('image/jpeg');
     setImagePreview(dataUrl);
@@ -444,7 +450,7 @@ export default function Home() {
                 </div>
                 {mode === 'camera' ? (
                   <div className="w-full h-full flex flex-col">
-                    <video ref={videoRef} autoPlay playsInline muted className="flex-1 min-h-0 w-full object-cover" />
+                    <video ref={videoRef} autoPlay playsInline muted className="flex-1 min-h-0 w-full object-cover -scale-x-100" />
                     <div className="flex-shrink-0 flex gap-2 p-3 bg-[#0B0B0F]/90 backdrop-blur-md">
                       <button
                         onClick={capturePhoto}
