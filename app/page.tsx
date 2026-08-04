@@ -272,7 +272,8 @@ export default function Home() {
   // GỌI API GENERATE
   // ============================================================
   const handleGenerate = async () => {
-    if (!name) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       toast.warning('Vui lòng nhập tên của bạn.');
       return;
     }
@@ -335,7 +336,7 @@ export default function Home() {
 
       setResultImage(data.resultImageBase64);
 
-      const overlaid = await overlayNameOnImage(data.resultImageBase64, name);
+      const overlaid = await overlayNameOnImage(data.resultImageBase64, trimmedName);
       setFinalImage(overlaid);
       toast.success('Đã tạo ảnh siêu anh hùng thành công!');
     } catch (err: any) {
@@ -681,7 +682,7 @@ export default function Home() {
                     </div>
                     <a
                       href={finalImage}
-                      download={`superhero-${name}.png`}
+                      download={`superhero-${name.trim().replace(/\s+/g, '-') || 'result'}.png`}
                       onClick={(e) => e.stopPropagation()}
                       className="absolute bottom-3 right-3 bg-[#0B0B0F]/80 hover:bg-black border border-white/20 hover:border-[#FFC93C] px-3.5 py-1.5 rounded-lg text-xs font-body font-medium text-white flex items-center gap-1.5 shadow-xl backdrop-blur-md transition z-30"
                     >
