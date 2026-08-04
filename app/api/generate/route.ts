@@ -1,6 +1,6 @@
 // app/api/generate/route.ts
 // Backend logic (Serverless Function): nhận ảnh + lựa chọn nhân vật,
-// gọi Gemini 2.5 Flash Image API (đã bật billing) để tạo ảnh siêu anh hùng.
+// gọi Gemini 3.1 Flash Image API (đã bật billing) để tạo ảnh siêu anh hùng.
 
 import { HEROES, MYSTERY_PROMPTS } from '@/config/heroes.config';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
@@ -97,7 +97,7 @@ export async function POST(request: Request) {
     }
 
     const { response: geminiResponse, data: geminiData } = await fetchGeminiWithRetry(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${apiKey}`,
       requestPayload,
       { maxRetries: 2, baseDelayMs: 1000 } // thử lại tối đa 2 lần, delay 1s -> 2s
     );

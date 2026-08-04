@@ -150,10 +150,12 @@ export async function POST(request: Request) {
       generationConfig: {
         // Ép model trả JSON thuần, dễ parse hơn
         responseMimeType: 'application/json',
+        // Đặt đủ cao để tránh response bị cắt giữa chừng (JSON không đóng ngoặc -> parse lỗi)
+        maxOutputTokens: 512,
       },
     };
     const { response: geminiResponse, data: geminiData } = await fetchGeminiWithRetry(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`,
         requestPayload,
         { maxRetries: 2, baseDelayMs: 1000 } // thử lại tối đa 2 lần, delay 1s -> 2s
     );
@@ -188,13 +190,29 @@ export async function POST(request: Request) {
     let rawValidation;
     try {
       // Phòng trường hợp model lỡ bọc thêm ```json ... ```
-      const cleaned = rawText.replace(/```json|```/g, '').trim();
+      let cleaned = rawText.replace(/```json|```/g, '').trim();
+
+      // Phòng trường hợp response bị cắt (chạm maxOutputTokens) hoặc model
+      // chèn thêm text trước/sau JSON -> chỉ lấy phần từ "{" đầu tới "}" cuối
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+      }
+
       rawValidation = JSON.parse(cleaned);
     } catch (parseErr) {
+      // Log rawText + finishReason ra console server để chẩn đoán (không lộ ra client)
+      const finishReason = geminiData?.candidates?.[0]?.finishReason;
+      console.error('[validate-image] JSON parse failed. finishReason:', finishReason, 'rawText:', rawText);
+
       return Response.json(
         {
           success: false,
-          error: 'Không thể phân tích kết quả trả về từ Gemini.',
+          error:
+            finishReason === 'MAX_TOKENS'
+              ? 'Gemini trả về kết quả bị cắt (vượt giới hạn token). Vui lòng thử lại.'
+              : 'Không thể phân tích kết quả trả về từ Gemini. Vui lòng thử lại.',
           httpStatus: geminiResponse.status,
           latency,
         },
