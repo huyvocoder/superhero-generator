@@ -13,7 +13,6 @@ import {
 // KIỂU DỮ LIỆU
 // ============================================================
 
-// Một dòng log hiển thị ở Log Panel (Thành phần D)
 interface LogEntry {
   id: string;
   timestamp: string;
@@ -25,7 +24,6 @@ interface LogEntry {
   errorMessage?: string;
 }
 
-// Kết quả validate ảnh (Thành phần A mở rộng - validate trước khi generate)
 interface ImageValidation {
   isValid: boolean;
   reason?: string;
@@ -36,34 +34,38 @@ interface ImageValidation {
   isFaceClear?: boolean;
 }
 
+// Mosaic ghép từ 5 ảnh nền có sẵn trong /public/background,
+// xếp thành 1 khối chữ nhật dọc: 9:16 -> (1:1 + 1:1) -> 16:9 -> 9:16
+const MOSAIC_ROWS: { images: string[]; ratio: string }[] = [
+  { images: ['/background/9-16-1.png'], ratio: 'aspect-[9/16]' },
+  { images: ['/background/1-1-1.png', '/background/1-1-2.png'], ratio: 'aspect-square' },
+  { images: ['/background/16-9.png'], ratio: 'aspect-[16/9]' },
+  { images: ['/background/9-16-2.png'], ratio: 'aspect-[9/16]' },
+];
+
 export default function Home() {
   // ----------------------------------------------------------
   // STATE - Thành phần A (input tên + ảnh)
   // ----------------------------------------------------------
   const [name, setName] = useState('');
-  const [imagePreview, setImagePreview] = useState<string | null>(null); // ảnh dùng để hiển thị (có prefix data:image/...)
-  const [imageBase64, setImageBase64] = useState<string | null>(null); // ảnh base64 thuần, dùng để gửi API
-  const [mode, setMode] = useState<'idle' | 'camera'>('idle'); // trạng thái camera đang bật hay không
-  const [showUploadMenu, setShowUploadMenu] = useState(false); // hiện menu "Tải từ máy / Chụp ảnh" khi bấm ô upload
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [mode, setMode] = useState<'idle' | 'camera'>('idle');
+  const [showUploadMenu, setShowUploadMenu] = useState(false);
 
-  // STATE - validate ảnh đầu vào (có mặt người / có mờ / có tối không...)
   const [imageValidation, setImageValidation] = useState<ImageValidation | null>(null);
   const [validating, setValidating] = useState(false);
 
-  // STATE - lựa chọn nhân vật + tỉ lệ ảnh
   const [selectedHero, setSelectedHero] = useState(DEFAULT_HERO_ID);
   const [selectedRatio, setSelectedRatio] = useState(DEFAULT_ASPECT_RATIO);
 
-  // STATE - Thành phần B (gọi API, loading, kết quả)
   const [loading, setLoading] = useState(false);
-  const [resultImage, setResultImage] = useState<string | null>(null); // ảnh siêu anh hùng trả về từ Gemini (base64)
-  const [finalImage, setFinalImage] = useState<string | null>(null); // ảnh sau khi overlay tên (Thành phần C)
+  const [resultImage, setResultImage] = useState<string | null>(null);
+  const [finalImage, setFinalImage] = useState<string | null>(null);
 
-  // STATE - Thành phần D (log)
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showLogPanel, setShowLogPanel] = useState(true);
 
-  // Refs cho camera & input file
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,45 +74,39 @@ export default function Home() {
   // XỬ LÝ ẢNH - Thành phần A
   // ============================================================
 
-  // Upload ảnh từ thiết bị
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  setImageValidation(null); // reset kết quả validate cũ trước khi xử lý ảnh mới
+    setImageValidation(null);
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    const result = reader.result as string;
-    setImagePreview(result);
-    const base64 = result.split(',')[1];
-    setImageBase64(base64);
-    validateImage(base64);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setImagePreview(result);
+      const base64 = result.split(',')[1];
+      setImageBase64(base64);
+      validateImage(base64);
+    };
+    reader.readAsDataURL(file);
+    setShowUploadMenu(false);
   };
-  reader.readAsDataURL(file);
-  setShowUploadMenu(false);
-};
 
-  // Bật camera trình duyệt
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-        },
+        video: { facingMode: 'user' },
       });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
       setMode('camera');
       setShowUploadMenu(false);
     } catch (err) {
-      // Bắt lỗi khi user từ chối quyền camera hoặc thiết bị không hỗ trợ
       toast.error('Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập trình duyệt.');
       console.error(err);
     }
   };
 
-  // Chụp ảnh từ luồng camera đang chạy
   const capturePhoto = () => {
     if (!videoRef.current) return;
     const canvas = document.createElement('canvas');
@@ -126,12 +122,10 @@ export default function Home() {
     setImageValidation(null);
     validateImage(base64);
 
-    // Tắt camera sau khi chụp xong
     streamRef.current?.getTracks().forEach((track) => track.stop());
     setMode('idle');
   };
 
-  // Hủy camera, không chụp
   const cancelCamera = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     setMode('idle');
@@ -145,122 +139,110 @@ export default function Home() {
   }, [mode]);
 
   // ============================================================
-  // VALIDATE ẢNH - kiểm tra có mặt người, ảnh có mờ/tối không
-  // trước khi cho phép Generate (gọi Gemini phân tích ảnh)
+  // VALIDATE ẢNH
   // ============================================================
   const validateImage = async (base64: string) => {
-  setValidating(true);
+    setValidating(true);
 
-  const logId = addLog({ action: 'Validate ảnh đầu vào', status: 'pending' });
-  const startTime = Date.now();
+    const logId = addLog({ action: 'Validate ảnh đầu vào', status: 'pending' });
+    const startTime = Date.now();
 
-  try {
-    const res = await fetch('/api/validate-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageBase64: base64 }),
-    });
-    const data = await res.json();
-    const latency = Date.now() - startTime;
-
-    if (!res.ok || !data.success) {
-      updateLog(logId, {
-        status: 'error',
-        httpStatus: data.httpStatus || res.status,
-        latency,
-        errorMessage: data.error,
+    try {
+      const res = await fetch('/api/validate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64 }),
       });
-      // Lỗi hệ thống khi validate (network, Gemini lỗi...) -> reset ảnh, không giữ ảnh lỗi trên màn hình
+      const data = await res.json();
+      const latency = Date.now() - startTime;
+
+      if (!res.ok || !data.success) {
+        updateLog(logId, {
+          status: 'error',
+          httpStatus: data.httpStatus || res.status,
+          latency,
+          errorMessage: data.error,
+        });
+        resetImage();
+        toast.error(data.error || 'Không thể kiểm tra ảnh, vui lòng thử lại.');
+        return;
+      }
+
+      updateLog(logId, {
+        status: 'success',
+        httpStatus: data.httpStatus,
+        latency,
+        requestPayload: data.requestPayload,
+      });
+
+      if (!data.validation.isValid) {
+        resetImage();
+        toast.warning(data.validation.reason);
+        return;
+      }
+
+      setImageValidation(data.validation);
+    } catch (err: any) {
+      const latency = Date.now() - startTime;
+      updateLog(logId, { status: 'error', latency, errorMessage: err.message || 'Lỗi kết nối mạng' });
       resetImage();
-      toast.error(data.error || 'Không thể kiểm tra ảnh, vui lòng thử lại.');
-      return;
+      toast.error('Không thể kết nối để kiểm tra ảnh.');
+    } finally {
+      setValidating(false);
     }
+  };
 
-    updateLog(logId, {
-      status: 'success',
-      httpStatus: data.httpStatus,
-      latency,
-      requestPayload: data.requestPayload,
-    });
-
-    if (!data.validation.isValid) {
-      // Ảnh không đạt yêu cầu (mờ, tối, sai số mặt...) -> reset về trạng thái chưa có ảnh
-      // để người dùng chọn/chụp ảnh khác ngay, thay vì phải tự bấm "Chọn lại ảnh khác"
-      resetImage();
-      toast.warning(data.validation.reason);
-      return;
-    }
-
-    setImageValidation(data.validation);
-  } catch (err: any) {
-    const latency = Date.now() - startTime;
-    updateLog(logId, { status: 'error', latency, errorMessage: err.message || 'Lỗi kết nối mạng' });
-    resetImage();
-    toast.error('Không thể kết nối để kiểm tra ảnh.');
-  } finally {
-    setValidating(false);
-  }
-};
-
-// Reset toàn bộ state liên quan đến ảnh, dùng khi ảnh không hợp lệ hoặc người dùng chọn ảnh khác
-const resetImage = () => {
-  setImagePreview(null);
-  setImageBase64(null);
-  setImageValidation(null);
-};
+  const resetImage = () => {
+    setImagePreview(null);
+    setImageBase64(null);
+    setImageValidation(null);
+  };
 
   // ============================================================
   // THÀNH PHẦN C - Overlay tên lên ảnh kết quả bằng Canvas
-  // Input là base64 thuần trả về từ Gemini (không có prefix data:...)
   // ============================================================
   const overlayNameOnImage = (base64Image: string, userName: string): Promise<string> => {
-  return new Promise((resolve) => {
-    const img = new Image();
+    return new Promise((resolve) => {
+      const img = new Image();
 
-    img.onload = async () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return resolve(base64Image);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(base64Image);
 
-      // Đảm bảo font đã được load
-      await document.fonts.load('48px "GreatVibes"');
+        await document.fonts.load('48px "GreatVibes"');
 
-      // Vẽ ảnh
-      ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0);
 
-      const fontSize = Math.floor(img.width * 0.1);
+        const fontSize = Math.floor(img.width * 0.1);
 
-      ctx.font = `${fontSize}px "GreatVibes"`; // Không cần bold
-      ctx.textAlign = "center";
-      ctx.textBaseline = "alphabetic";
+        ctx.font = `${fontSize}px "GreatVibes"`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
 
-      const textX = img.width / 2;
-      const textY = img.height - fontSize * 0.8;
+        const textX = img.width / 2;
+        const textY = img.height - fontSize * 0.8;
 
-      // Viền
-      ctx.lineWidth = fontSize * 0.06;
-      ctx.strokeStyle = "rgba(0,0,0,0.7)";
-      ctx.strokeText(userName, textX, textY);
+        ctx.lineWidth = fontSize * 0.06;
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.strokeText(userName, textX, textY);
 
-      // Chữ
-      ctx.fillStyle = "#fff";
-      ctx.fillText(userName, textX, textY);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(userName, textX, textY);
 
-      resolve(canvas.toDataURL("image/png"));
-    };
+        resolve(canvas.toDataURL('image/png'));
+      };
 
-    img.src = `data:image/png;base64,${base64Image}`;
-  });
-};
+      img.src = `data:image/png;base64,${base64Image}`;
+    });
+  };
 
   // ============================================================
-  // GHI LOG - Thành phần D
+  // GHI LOG
   // ============================================================
-
-  // Thêm 1 log mới, trả về id để update lại sau (khi có kết quả)
   const addLog = (entry: Partial<LogEntry>): string => {
     const id = crypto.randomUUID();
     setLogs((prev) => [
@@ -271,22 +253,19 @@ const resetImage = () => {
         status: entry.status || 'pending',
         ...entry,
       },
-      ...prev, // log mới nhất hiện lên đầu danh sách
+      ...prev,
     ]);
     return id;
   };
 
-  // Cập nhật lại 1 log đã tồn tại (theo id) khi có kết quả trả về
   const updateLog = (id: string, updates: Partial<LogEntry>) => {
     setLogs((prev) => prev.map((log) => (log.id === id ? { ...log, ...updates } : log)));
   };
 
   // ============================================================
-  // GỌI API GENERATE - Thành phần B
+  // GỌI API GENERATE
   // ============================================================
   const handleGenerate = async () => {
-    // Không disable cứng nút nữa -> validate ở đây và toast rõ ràng đang thiếu gì,
-    // để người dùng biết chính xác cần làm gì thay vì đoán vì sao nút không bấm được
     if (!name) {
       toast.warning('Vui lòng nhập tên của bạn.');
       return;
@@ -308,7 +287,6 @@ const resetImage = () => {
     setResultImage(null);
     setFinalImage(null);
 
-    // Ghi log ngay khi bắt đầu gửi request (trạng thái pending)
     const logId = addLog({
       action: `Generate superhero (${selectedHero}, ${selectedRatio})`,
       status: 'pending',
@@ -331,7 +309,6 @@ const resetImage = () => {
       const latency = Date.now() - startTime;
 
       if (!res.ok || !data.success) {
-        // Trường hợp lỗi: rate limit, timeout, Gemini từ chối nội dung...
         updateLog(logId, {
           status: 'error',
           httpStatus: data.httpStatus || res.status,
@@ -343,7 +320,6 @@ const resetImage = () => {
         return;
       }
 
-      // Thành công: cập nhật log + hiển thị ảnh kết quả
       updateLog(logId, {
         status: 'success',
         httpStatus: data.httpStatus,
@@ -353,12 +329,10 @@ const resetImage = () => {
 
       setResultImage(data.resultImageBase64);
 
-      // Thành phần C: overlay tên lên ảnh ngay sau khi có ảnh kết quả
       const overlaid = await overlayNameOnImage(data.resultImageBase64, name);
       setFinalImage(overlaid);
       toast.success('Đã tạo ảnh siêu anh hùng thành công!');
     } catch (err: any) {
-      // Lỗi network/timeout phía client (không kết nối được server)
       const latency = Date.now() - startTime;
       updateLog(logId, {
         status: 'error',
@@ -371,101 +345,152 @@ const resetImage = () => {
     }
   };
 
+  const canGenerate = !loading && !validating && imageValidation?.isValid !== false;
+
+  const [selectedDemoImage, setSelectedDemoImage] = useState<string | null>(null);
+
   // ============================================================
   // GIAO DIỆN
   // ============================================================
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-6">
-      <div className="max-w-2xl mx-auto space-y-6">
-        <h1 className="text-3xl font-bold text-center">🦸 Superhero Generator</h1>
+    <main className="min-h-screen w-full overflow-x-hidden bg-[#0B0B0F] text-[#F5F0E6] selection:bg-[#FFC93C] selection:text-black">
+      {/* Font comic cho tiêu đề + halftone texture nền */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        .font-comic { font-family: 'Bangers', system-ui, sans-serif; letter-spacing: 0.02em; }
+        .font-body { font-family: 'Space Grotesk', system-ui, sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .halftone-bg {
+          background-image: radial-gradient(#ffffff14 1px, transparent 1px);
+          background-size: 14px 14px;
+        }
+        .comic-panel {
+          border: 3px solid #1a1a1f;
+          box-shadow: 6px 6px 0 #E63946;
+        }
+        .comic-panel-blue { box-shadow: 6px 6px 0 #1D3E9C; }
+        .comic-panel-yellow { box-shadow: 6px 6px 0 #FFC93C; }
+      `}</style>
 
-        {/* ---------- Thành phần A: Input tên ---------- */}
-        <div>
-          <label className="block text-sm mb-2 text-gray-300">Tên của bạn</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Nhập tên..."
-            className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 outline-none"
-          />
+      {/* Modal Xem Ảnh Demo / Kết quả Fullsize */}
+      {selectedDemoImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setSelectedDemoImage(null)}
+        >
+          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center">
+            <button
+              onClick={() => setSelectedDemoImage(null)}
+              className="absolute -top-10 right-0 text-white hover:text-[#FFC93C] font-mono text-sm bg-black/60 px-3 py-1 rounded border border-white/20 transition"
+            >
+              ✕ Đóng
+            </button>
+            <img
+              src={selectedDemoImage}
+              alt="Full view"
+              className="max-w-full max-h-[85vh] object-contain rounded-md border-2 border-[#FFC93C] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
         </div>
+      )}
 
-        {/* ---------- Thành phần A: Upload / Camera ---------- */}
-        <div className="relative">
-          <label className="block text-sm mb-2 text-gray-300">Ảnh của bạn</label>
+      <div className="halftone-bg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 space-y-10">
+          {/* ---------- TIÊU ĐỀ LỚN ---------- */}
+          <header className="text-center space-y-3">
+            <p className="mb-4 font-mono text-sm font-bold tracking-[0.3em] text-[#FFC93C] uppercase drop-shadow-[0_0_10px_rgba(255,201,60,0.3)]">
+              ⚡ Studio biến hình · phiên bản beta
+            </p>
+            <h1 className="font-comic text-3xl sm:text-4xl md:text-5xl text-white tracking-wide drop-shadow-[0_4px_12px_rgba(230,57,70,0.5)]">
+              Biến thân thành siêu anh hùng mà bạn muốn
+            </h1>
+          </header>
 
-          {mode === 'camera' ? (
-            // Đang bật camera: hiện video preview + nút chụp/hủy
-            <div className="space-y-3">
-              <video ref={videoRef} autoPlay playsInline className="w-full rounded-lg" />
-              <div className="flex gap-3">
-                <button
-                  onClick={capturePhoto}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded-lg font-medium"
-                >
-                  📸 Chụp ảnh
-                </button>
-                <button
-                  onClick={cancelCamera}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-medium"
-                >
-                  Hủy
-                </button>
-              </div>
-            </div>
-          ) : imagePreview ? (
-            // Đã có ảnh: hiện preview + nút chọn lại + trạng thái validate
-            <div className="space-y-3">
-              <img
-                src={imagePreview}
-                alt="Preview"
-                className="w-full rounded-lg max-h-72 object-contain border border-gray-700"
-              />
-
-              {/* Trạng thái validate ảnh - giữ hiển thị inline vì đây là trạng thái liên tục,
-                  không phải sự kiện tức thời như toast */}
-              {validating && (
-                <p className="text-sm text-yellow-400 flex items-center gap-2">
-                  <span className="w-3 h-3 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
-                  Đang kiểm tra ảnh...
-                </p>
-              )}
-
-              <button
-                onClick={resetImage}
-                className="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg font-medium"
-              >
-                Chọn lại ảnh khác
-              </button>
-            </div>
-          ) : (
-            // Chưa có ảnh: hiện 1 ô bấm vào để mở menu Upload / Camera
-            <div>
-              <button
-                onClick={() => setShowUploadMenu(!showUploadMenu)}
-                className="w-full bg-gray-800 hover:bg-gray-700 border-2 border-dashed border-gray-600 rounded-lg py-10 flex flex-col items-center gap-2"
-              >
-                <span className="text-3xl">📷</span>
-                <span className="text-sm text-gray-300">Bấm để tải ảnh của bạn</span>
-              </button>
-
-              {showUploadMenu && (
-                <div className="mt-2 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full px-4 py-3 text-left hover:bg-gray-700 flex items-center gap-2"
-                  >
-                    📁 Tải ảnh từ máy
-                  </button>
-                  <button
-                    onClick={startCamera}
-                    className="w-full px-4 py-3 text-left hover:bg-gray-700 flex items-center gap-2 border-t border-gray-700"
-                  >
-                    📸 Chụp ảnh bằng Camera
-                  </button>
+          {/* ---------- KHU VỰC LÀM VIỆC CHÍNH ---------- */}
+          <section className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-8 items-stretch">
+            {/* CỘT 1: Ảnh nguồn */}
+            <div className="flex flex-col">
+              <div className="flex-1 rounded-xl overflow-hidden bg-[#15151b]/80 border border-white/10 backdrop-blur-md aspect-square flex items-center justify-center relative group shadow-[0_8px_30px_rgb(0,0,0,0.5)] hover:border-[#FFC93C]/40 transition duration-300">
+                {/* Label badge inside */}
+                <div className="absolute top-3 left-3 z-30 font-mono text-[10px] uppercase tracking-widest text-[#FFC93C] bg-black/50 backdrop-blur-sm px-2 py-1 rounded-md border border-[#FFC93C]/20">
+                  📸 Ảnh của bạn
                 </div>
-              )}
+                {mode === 'camera' ? (
+                  <div className="w-full h-full flex flex-col">
+                    <video ref={videoRef} autoPlay playsInline className="flex-1 w-full object-cover" />
+                    <div className="flex gap-2 p-3 bg-[#0B0B0F]/90 backdrop-blur-md">
+                      <button
+                        onClick={capturePhoto}
+                        className="flex-1 bg-[#E63946] hover:bg-[#c92e3a] py-2 rounded-lg font-body font-bold text-sm text-white shadow-lg transition"
+                      >
+                        📸 Chụp ảnh
+                      </button>
+                      <button
+                        onClick={cancelCamera}
+                        className="flex-1 bg-[#2a2a33] hover:bg-[#35353f] py-2 rounded-lg font-body font-bold text-sm text-white transition"
+                      >
+                        ❌ Hủy
+                      </button>
+                    </div>
+                  </div>
+                ) : imagePreview ? (
+                  <div className="w-full h-full relative overflow-hidden flex items-center justify-center bg-[#0B0B0F]">
+                    {/* Blurred Backdrop phủ kín khung */}
+                    <div
+                      className="absolute inset-0 bg-cover bg-center blur-2xl opacity-40 scale-125"
+                      style={{ backgroundImage: `url(${imagePreview})` }}
+                    />
+                    <img src={imagePreview} alt="Preview" className="relative z-10 w-full h-full object-contain p-2" />
+
+                    {validating && (
+                      <div className="absolute inset-0 z-20 bg-black/70 backdrop-blur-sm flex items-center justify-center">
+                        <p className="text-sm font-body text-[#FFC93C] flex items-center gap-2">
+                          <span className="w-4 h-4 border-2 border-[#FFC93C] border-t-transparent rounded-full animate-spin" />
+                          Đang kiểm tra ảnh...
+                        </p>
+                      </div>
+                    )}
+                    <button
+                      disabled={loading}
+                      onClick={() => setShowUploadMenu(!showUploadMenu)}
+                      className="absolute bottom-3 right-3 bg-[#0B0B0F]/80 hover:bg-black border border-white/20 hover:border-[#FFC93C] px-3.5 py-1.5 rounded-lg text-xs font-body font-medium shadow-xl backdrop-blur-md transition disabled:opacity-50 disabled:cursor-not-allowed z-20"
+                    >
+                      🔄 Chọn lại ảnh khác
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowUploadMenu(!showUploadMenu)}
+                    className="w-full h-full flex flex-col items-center justify-center gap-3 hover:bg-white/5 transition p-6 text-center group"
+                  >
+                    <span className="text-5xl group-hover:scale-110 transition duration-300 opacity-40">📷</span>
+                    <span className="text-xs font-body text-[#F5F0E6]/60 group-hover:text-white transition">
+                      Bấm để tải ảnh của bạn
+                    </span>
+                  </button>
+                )}
+
+                {showUploadMenu && mode !== 'camera' && (
+                  <div className="absolute inset-x-4 bottom-14 bg-[#15151b]/95 border border-white/20 rounded-xl overflow-hidden z-30 shadow-2xl backdrop-blur-xl">
+                    <button
+                      disabled={loading}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full px-4 py-3.5 text-left hover:bg-white/10 flex items-center gap-2.5 font-body text-sm text-white transition disabled:opacity-50"
+                    >
+                      📁 Tải ảnh từ máy
+                    </button>
+                    <button
+                      disabled={loading}
+                      onClick={startCamera}
+                      className="w-full px-4 py-3.5 text-left hover:bg-white/10 flex items-center gap-2.5 border-t border-white/10 font-body text-sm text-white transition disabled:opacity-50"
+                    >
+                      📸 Chụp ảnh bằng Camera
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -474,146 +499,286 @@ const resetImage = () => {
                 className="hidden"
               />
             </div>
-          )}
-        </div>
 
-        {/* ---------- Chọn nhân vật ---------- */}
-        <div>
-          <label className="block text-sm mb-2 text-gray-300">Chọn siêu anh hùng</label>
-          <div className="grid grid-cols-4 gap-3">
-            {HEROES.map((hero) => (
-              <button
-                key={hero.id}
-                onClick={() => setSelectedHero(hero.id)}
-                className={`flex flex-col items-center gap-2 p-2 rounded-lg border-2 transition ${
-                  selectedHero === hero.id
-                    ? 'border-purple-500 bg-purple-500/10'
-                    : 'border-gray-700 bg-gray-800'
-                }`}
-              >
-                <img
-                  src={hero.thumbnail}
-                  alt={hero.name}
-                  className="w-full aspect-square rounded-lg object-cover"
+            {/* CỘT 2: Lựa chọn nhân vật + tỉ lệ + nút generate */}
+            <div className="space-y-5 lg:w-72 bg-[#15151b]/60 border border-white/10 backdrop-blur-md p-4 rounded-xl shadow-xl">
+              <div>
+                <label className="block font-mono text-[11px] uppercase tracking-widest text-[#FFC93C] mb-2">
+                  ✏️ Tên của bạn
+                </label>
+                <input
+                  type="text"
+                  disabled={loading}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Nhập tên của bạn..."
+                  className="w-full px-4 py-3 rounded-lg bg-[#0B0B0F]/80 border border-white/10 focus:border-[#FFC93C] outline-none font-body text-sm text-white placeholder-white/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 />
-                <span className="text-xs text-gray-300">{hero.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+              </div>
 
-        {/* ---------- Chọn tỉ lệ khung hình ---------- */}
-        <div>
-          <label className="block text-sm mb-2 text-gray-300">Tỉ lệ ảnh</label>
-          <div className="grid grid-cols-3 gap-3">
-            {ASPECT_RATIOS.map((ratio) => (
-              <button
-                key={ratio.id}
-                onClick={() => setSelectedRatio(ratio.value)}
-                className={`py-3 rounded-lg border-2 text-sm font-medium transition ${
-                  selectedRatio === ratio.value
-                    ? 'border-purple-500 bg-purple-500/10'
-                    : 'border-gray-700 bg-gray-800'
-                }`}
-              >
-                {ratio.label}
-              </button>
-            ))}
-          </div>
-        </div>
+              <div>
+                <label className="block font-mono text-[11px] uppercase tracking-widest text-[#FFC93C] mb-2">
+                  🦸 Danh tính
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {HEROES.map((hero: any) => (
+                    <button
+                      key={hero.id}
+                      disabled={loading}
+                      onClick={() => setSelectedHero(hero.id)}
+                      className={`flex flex-col items-center gap-2 p-2 rounded-lg border transition ${selectedHero === hero.id
+                        ? 'border-[#FFC93C] bg-[#FFC93C]/15 shadow-[0_0_15px_rgba(255,201,60,0.2)]'
+                        : 'border-white/10 bg-[#0B0B0F]/60 hover:border-white/30'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      <div className="w-full aspect-[4/3] bg-white rounded-md flex items-center justify-center overflow-hidden">
+                        <img
+                          src={hero.thumbnail}
+                          alt={hero.name}
+                          className="h-[85%] w-auto object-contain"
+                        />
+                      </div>
 
-        {/* ---------- Nút Generate ----------
-            Không disable khi thiếu tên/ảnh nữa (chỉ disable khi đang loading/validating
-            hoặc ảnh CHẮC CHẮN không hợp lệ) - các trường hợp thiếu input sẽ được
-            handleGenerate chặn và báo rõ bằng toast khi bấm, thay vì im lặng disable nút */}
-        <button
-          onClick={handleGenerate}
-          disabled={loading || validating || imageValidation?.isValid === false}
-          className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed py-3 rounded-lg font-bold flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            <>
-              {/* Spinner loading - yêu cầu UI/UX trong đề bài */}
-              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Đang biến hình...
-            </>
-          ) : (
-            '⚡ Biến thành Siêu anh hùng'
-          )}
-        </button>
-
-        {/* ---------- Kết quả ảnh (sau khi overlay tên) ---------- */}
-        {finalImage && (
-          <div className="space-y-2">
-            <label className="block text-sm text-gray-300">Kết quả</label>
-
-            <img
-              src={finalImage}
-              alt="Result"
-              className="w-full rounded-lg border border-gray-700"
-            />
-
-            <a
-              href={finalImage}
-              download={`superhero-${name}.png`}
-              className="block text-center bg-green-600 hover:bg-green-700 py-2 rounded-lg font-medium"
-            >
-              ⬇️ Tải ảnh về
-            </a>
-          </div>
-        )}
-
-        {/* ---------- Thành phần D: Log Panel (giữ nguyên, không đổi sang toast) ---------- */}
-        <div className="border border-gray-700 rounded-lg">
-          <button
-            onClick={() => setShowLogPanel(!showLogPanel)}
-            className="w-full px-4 py-3 flex justify-between items-center text-sm font-medium bg-gray-800 rounded-t-lg"
-          >
-            <span>📋 System Log ({logs.length})</span>
-            <span>{showLogPanel ? '▲' : '▼'}</span>
-          </button>
-
-          {showLogPanel && (
-            <div className="max-h-80 overflow-y-auto divide-y divide-gray-800">
-              {logs.length === 0 ? (
-                <p className="p-4 text-sm text-gray-500">Chưa có log nào.</p>
-              ) : (
-                logs.map((log) => (
-                  <div key={log.id} className="p-3 text-xs font-mono space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">[{log.timestamp}]</span>
-                      <span
-                        className={
-                          log.status === 'success'
-                            ? 'text-green-400'
-                            : log.status === 'error'
-                            ? 'text-red-400'
-                            : 'text-yellow-400'
-                        }
-                      >
-                        {log.status === 'success' ? '✓ SUCCESS' : log.status === 'error' ? '✗ ERROR' : '… PENDING'}
+                      <span className="text-[11px] font-body text-white/80 font-medium">
+                        {hero.name}
                       </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-mono text-[11px] uppercase tracking-widest text-[#FFC93C] mb-2">
+                  📐 Tỉ lệ ảnh
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {ASPECT_RATIOS.map((ratio: any) => (
+                    <button
+                      key={ratio.id}
+                      disabled={loading}
+                      onClick={() => setSelectedRatio(ratio.value)}
+                      className={`py-2 rounded-lg border text-xs font-body font-bold transition ${selectedRatio === ratio.value
+                        ? 'border-[#FFC93C] bg-[#FFC93C]/15 text-[#FFC93C]'
+                        : 'border-white/10 bg-[#0B0B0F]/60 text-white/70 hover:border-white/30'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {ratio.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={handleGenerate}
+                disabled={!canGenerate || loading}
+                className="w-full bg-gradient-to-r from-[#E63946] to-[#C92E3A] hover:from-[#f84351] hover:to-[#df3340] disabled:from-[#2a2a33] disabled:to-[#2a2a33] disabled:cursor-not-allowed py-3.5 rounded-lg font-comic text-xl tracking-wider flex items-center justify-center gap-2 text-white shadow-[0_4px_20px_rgba(230,57,70,0.4)] disabled:shadow-none transition-all duration-300"
+              >
+                {loading ? (
+                  <>
+                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="font-body text-sm font-bold">Đang biến hình...</span>
+                  </>
+                ) : (
+                  '⚡ Biến hình'
+                )}
+              </button>
+            </div>
+
+            {/* CỘT 3: Kết quả */}
+            <div className="flex flex-col">
+              <div className="flex-1 rounded-xl overflow-hidden bg-[#15151b]/80 border border-white/10 backdrop-blur-md aspect-square flex items-center justify-center relative shadow-[0_8px_30px_rgb(0,0,0,0.5)] hover:border-[#FFC93C]/40 transition duration-300">
+                {/* Label badge inside */}
+                <div className="absolute top-3 left-3 z-30 font-mono text-[10px] uppercase tracking-widest text-[#FFC93C] bg-black/50 backdrop-blur-sm px-2 py-1 rounded-md border border-[#FFC93C]/20">
+                  🏆 Kết quả
+                </div>
+                {finalImage ? (
+                  <div
+                    onClick={() => setSelectedDemoImage(finalImage)}
+                    className="w-full h-full cursor-pointer group relative flex items-center justify-center bg-[#0B0B0F] overflow-hidden"
+                  >
+                    {/* Blurred Backdrop phủ kín khung kết quả */}
+                    <div
+                      className="absolute inset-0 bg-cover bg-center blur-2xl opacity-40 scale-125"
+                      style={{ backgroundImage: `url(${finalImage})` }}
+                    />
+                    <img
+                      src={finalImage}
+                      alt="Result"
+                      className="relative z-10 w-full h-full object-contain p-2 group-hover:scale-105 transition duration-300"
+                    />
+                    <div className="absolute inset-0 z-20 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-xs font-body text-white font-medium backdrop-blur-[2px]">
+                      🔍 Xem ảnh
                     </div>
-                    <div className="text-gray-300">{log.action}</div>
-                    {log.httpStatus && (
-                      <div className="text-gray-500">HTTP {log.httpStatus} · {log.latency}ms</div>
-                    )}
-                    {log.errorMessage && (
-                      <div className="text-red-400">Error: {log.errorMessage}</div>
-                    )}
-                    {log.requestPayload && (
-                      <details className="text-gray-500">
-                        <summary className="cursor-pointer">Xem payload</summary>
-                        <pre className="whitespace-pre-wrap break-all mt-1">
-                          {JSON.stringify(log.requestPayload, null, 2)}
-                        </pre>
-                      </details>
+                    <a
+                      href={finalImage}
+                      download={`superhero-${name}.png`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute bottom-3 right-3 bg-[#0B0B0F]/80 hover:bg-black border border-white/20 hover:border-[#FFC93C] px-3.5 py-1.5 rounded-lg text-xs font-body font-medium text-white flex items-center gap-1.5 shadow-xl backdrop-blur-md transition z-30"
+                    >
+                      ⬇️ Tải ảnh về
+                    </a>
+                  </div>
+                ) : loading ? (
+                  <div className="w-full h-full animate-pulse bg-[#1c1c22]/50 flex items-center justify-center">
+                    <span className="font-body text-xs text-[#F5F0E6]/50">Đang tạo ảnh siêu anh hùng...</span>
+                  </div>
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+                    <span className="text-5xl opacity-40">🏆</span>
+                    <span className="text-xs font-body text-[#F5F0E6]/60">
+                      Ảnh siêu anh hùng của bạn sẽ xuất hiện ở đây
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* ---------- BỘ SƯU TẬP DEMO + LOG PANEL ---------- */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+            {/* Bộ sưu tập Demo Gallery (Chiếm 2 cột) */}
+            <div className="lg:col-span-2 flex flex-col justify-between">
+              <label className="block font-mono text-[11px] uppercase tracking-widest text-[#FFC93C] mb-2 flex-shrink-0">
+                🎨 Bộ sưu tập demo (Bấm vào ảnh để xem chi tiết)
+              </label>
+              <div className="rounded-xl overflow-hidden bg-[#15151b]/80 border border-white/10 backdrop-blur-md p-4 flex-1 flex flex-col justify-center shadow-[0_8px_30px_rgb(0,0,0,0.5)]">
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.6fr_1fr] gap-3.5 items-center">
+                  {/* Cột 1: Ảnh 9:16 dọc */}
+                  <div
+                    onClick={() => setSelectedDemoImage('/background/9-16-1.png')}
+                    className="rounded-lg overflow-hidden border border-white/10 hover:border-[#FFC93C]/50 bg-[#0B0B0F] aspect-[9/16] cursor-pointer group relative transition duration-300 shadow-md"
+                  >
+                    <img
+                      src="/background/9-16-1.png"
+                      alt="Demo 1"
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-xs font-body text-white font-medium backdrop-blur-[2px]">
+                      🔍 Xem ảnh
+                    </div>
+                  </div>
+
+                  {/* Cột 2: Ghép 2 ảnh 1:1 vuông + 1 ảnh 16:9 ngang ở dưới */}
+                  <div className="flex flex-col gap-3.5 justify-center">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div
+                        onClick={() => setSelectedDemoImage('/background/1-1-1.png')}
+                        className="rounded-lg overflow-hidden border border-white/10 hover:border-[#FFC93C]/50 bg-[#0B0B0F] aspect-square cursor-pointer group relative transition duration-300 shadow-md"
+                      >
+                        <img
+                          src="/background/1-1-1.png"
+                          alt="Demo 2"
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[10px] font-body text-white font-medium backdrop-blur-[2px]">
+                          🔍 Xem
+                        </div>
+                      </div>
+                      <div
+                        onClick={() => setSelectedDemoImage('/background/1-1-2.png')}
+                        className="rounded-lg overflow-hidden border border-white/10 hover:border-[#FFC93C]/50 bg-[#0B0B0F] aspect-square cursor-pointer group relative transition duration-300 shadow-md"
+                      >
+                        <img
+                          src="/background/1-1-2.png"
+                          alt="Demo 3"
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[10px] font-body text-white font-medium backdrop-blur-[2px]">
+                          🔍 Xem
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      onClick={() => setSelectedDemoImage('/background/16-9.png')}
+                      className="rounded-lg overflow-hidden border border-white/10 hover:border-[#FFC93C]/50 bg-[#0B0B0F] aspect-[16/9] cursor-pointer group relative transition duration-300 shadow-md"
+                    >
+                      <img
+                        src="/background/16-9.png"
+                        alt="Demo 4"
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-xs font-body text-white font-medium backdrop-blur-[2px]">
+                        🔍 Xem ảnh
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cột 3: Ảnh 9:16 dọc */}
+                  <div
+                    onClick={() => setSelectedDemoImage('/background/9-16-2.png')}
+                    className="rounded-lg overflow-hidden border border-white/10 hover:border-[#FFC93C]/50 bg-[#0B0B0F] aspect-[9/16] cursor-pointer group relative transition duration-300 shadow-md"
+                  >
+                    <img
+                      src="/background/9-16-2.png"
+                      alt="Demo 5"
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-xs font-body text-white font-medium backdrop-blur-[2px]">
+                      🔍 Xem ảnh
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Log panel (Chiếm 1 cột) */}
+            <div className="lg:col-span-1 flex flex-col justify-between">
+              <label className="block font-mono text-[11px] uppercase tracking-widest text-[#FFC93C] mb-2 flex-shrink-0">
+                ⚙️ Nhật ký hệ thống
+              </label>
+              <div className="rounded-xl overflow-hidden bg-[#15151b]/80 border border-white/10 backdrop-blur-md flex-1 flex flex-col min-h-[300px] shadow-[0_8px_30px_rgb(0,0,0,0.5)]">
+                <button
+                  onClick={() => setShowLogPanel(!showLogPanel)}
+                  className="w-full px-4 py-3.5 flex justify-between items-center font-body text-sm font-bold bg-white/5 hover:bg-white/10 border-b border-white/10 text-white transition"
+                >
+                  <span>📋 System Log ({logs.length})</span>
+                  <span className="text-[#FFC93C]">{showLogPanel ? '▲' : '▼'}</span>
+                </button>
+
+                {showLogPanel && (
+                  <div className="flex-1 max-h-[380px] overflow-y-auto divide-y divide-white/10">
+                    {logs.length === 0 ? (
+                      <p className="p-4 text-sm font-body text-white/40">Chưa có log nào.</p>
+                    ) : (
+                      logs.map((log) => (
+                        <div key={log.id} className="p-3 text-xs font-mono space-y-1">
+                          <div className="flex justify-between">
+                            <span className="text-white/40">[{log.timestamp}]</span>
+                            <span
+                              className={
+                                log.status === 'success'
+                                  ? 'text-green-400 font-bold'
+                                  : log.status === 'error'
+                                    ? 'text-red-400 font-bold'
+                                    : 'text-[#FFC93C] font-bold'
+                              }
+                            >
+                              {log.status === 'success' ? '✓ SUCCESS' : log.status === 'error' ? '✗ ERROR' : '… PENDING'}
+                            </span>
+                          </div>
+                          <div className="text-white/80 font-medium">{log.action}</div>
+                          {log.httpStatus && (
+                            <div className="text-white/40">HTTP {log.httpStatus} · {log.latency}ms</div>
+                          )}
+                          {log.errorMessage && (
+                            <div className="text-red-400">Error: {log.errorMessage}</div>
+                          )}
+                          {log.requestPayload && (
+                            <details className="text-white/40">
+                              <summary className="cursor-pointer hover:text-[#FFC93C] transition">Xem payload</summary>
+                              <pre className="whitespace-pre-wrap break-all mt-1 bg-black/40 p-2 rounded border border-white/5">
+                                {JSON.stringify(log.requestPayload, null, 2)}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
+                      ))
                     )}
                   </div>
-                ))
-              )}
+                )}
+              </div>
             </div>
-          )}
+          </section>
         </div>
       </div>
     </main>
